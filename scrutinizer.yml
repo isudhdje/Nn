@@ -6,7 +6,7 @@ build:
       - python3 -m ensurepip  # Ensure pip is installed for PyPy
       - python3 -m pip install --upgrade pip
       - pip install telebot pytz flask aiogram pymongo pyTelegramBotAPI motor
-      - pip install python-telegram-bot==13.15
+      - python3 -m pip install --upgrade python-telegram-bot
 
   tests:
     override:
