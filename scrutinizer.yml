@@ -11,4 +11,4 @@ build:
     override:
       - chmod +x bgmi || true
        # Prevent failure if file doesn't exist
-      - python3 sid.py
+      - python3 daku.py
