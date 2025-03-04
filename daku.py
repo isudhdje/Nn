@@ -1,5 +1,5 @@
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from datetime import datetime, timedelta
 import subprocess
 import time  # Import time for sleep functionalit
@@ -36,7 +36,7 @@ recent_attacks = {}
 # Cooldown period in seconds
 COOLDOWN_PERIOD = 1
 
-async def approve(update: Update, context: CallbackContext):
+async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin = collection.find_one({"user_id": update.effective_user.id})
     
     # Check if the user is the Super Admin or a normal admin
@@ -201,7 +201,7 @@ async def notify_expiring_users(bot):
         await asyncio.sleep(5)  # Check every 5 seconds
         
 # Remove a user from MongoDB
-async def remove(update: Update, context: CallbackContext):
+async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 *You are not authorized to use this command.*", parse_mode='Markdown')
         return
@@ -273,7 +273,7 @@ def get_default_buttons():
     ]
     return InlineKeyboardMarkup(keyboard)
     
-async def addadmin(update: Update, context: CallbackContext):
+async def addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 *You are not authorized to use this command.*", parse_mode="Markdown")
         return
@@ -298,7 +298,7 @@ async def addadmin(update: Update, context: CallbackContext):
             parse_mode="Markdown"
         )
         
-async def addbalance(update: Update, context: CallbackContext):
+async def addbalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 *You are not authorized to use this command.*", parse_mode="Markdown")
         return
@@ -322,7 +322,7 @@ async def addbalance(update: Update, context: CallbackContext):
             parse_mode="Markdown"
         )
         
-async def adminbalance(update: Update, context: CallbackContext):
+async def adminbalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin = collection.find_one({"user_id": update.effective_user.id})
     if not admin or not admin.get("is_admin", False):
         await update.message.reply_text("🚫 *You are not an admin.*", parse_mode="Markdown")
@@ -332,7 +332,7 @@ async def adminbalance(update: Update, context: CallbackContext):
     await update.message.reply_text(f"💳 *Admin current balance is ₹{balance}.*", parse_mode="Markdown")
 
 # Command Handlers
-async def start(update: Update, context: CallbackContext):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     welcome_message = (
         f"👋 *Hello, {user.first_name}!*\n\n"
@@ -342,7 +342,7 @@ async def start(update: Update, context: CallbackContext):
     )
     await update.message.reply_text(welcome_message, parse_mode='Markdown')
 
-async def help_command(update: Update, context: CallbackContext):
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_data = collection.find_one({"user_id": user.id})
     if user.id == ADMIN_ID:
@@ -392,7 +392,7 @@ async def help_command(update: Update, context: CallbackContext):
 
     await update.message.reply_text(help_message, parse_mode="Markdown")
     
-async def gen(update: Update, context: CallbackContext):
+async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     admin_data = collection.find_one({"user_id": user_id})
     
@@ -483,7 +483,7 @@ async def gen(update: Update, context: CallbackContext):
             parse_mode="Markdown"
         )
         
-async def redeem(update: Update, context: CallbackContext):
+async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     try:
         key = context.args[0]  # Key to redeem
@@ -536,7 +536,7 @@ async def redeem(update: Update, context: CallbackContext):
             parse_mode="Markdown"
         )
         
-async def removeadmin(update: Update, context: CallbackContext):
+async def removeadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 *You are not authorized to use this command.*", parse_mode="Markdown")
         return
@@ -559,7 +559,7 @@ async def removeadmin(update: Update, context: CallbackContext):
             parse_mode="Markdown"
         )
         
-async def removecoin(update: Update, context: CallbackContext):
+async def removecoin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 *You are not authorized to use this command.*", parse_mode="Markdown")
         return
@@ -609,7 +609,7 @@ FEEDBACK_CHANNEL = "@feedbackchanneldaku"
 CHANNEL_USERNAME = "@DAKUxBHAI"
 CHANNEL_LINK = "https://t.me/DAKUxBHAI"
 
-async def set_attack_limit(update: Update, context: CallbackContext):
+async def set_attack_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 *You are not authorized to use this command.*", parse_mode="Markdown")
         return
@@ -657,7 +657,7 @@ async def join_channel(update: Update, context):
         await update.callback_query.answer("🚫 You haven't joined the channel yet!", show_alert=True)
 
 # ✅ Attack Command with Channel Check & Button
-async def bgmi(update: Update, context: CallbackContext):
+async def bgmi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global current_attack_user, current_attack_end_time
 
     user_id = update.effective_user.id
@@ -793,7 +793,7 @@ async def run_attack(ip, port, time_duration, update, user_id):
         await update.message.reply_text(f"⚠️ *Attack Error:* {str(e)}", parse_mode="Markdown")
 
 # ✅ Feedback Handling & Duplicate Photo Ban
-async def handle_photo(update: Update, context: CallbackContext):
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global user_feedback_required, user_bans, user_last_photo
 
     user_id = update.effective_user.id
@@ -815,7 +815,7 @@ async def handle_photo(update: Update, context: CallbackContext):
         await update.message.reply_text("✅ *Feedback received! You can attack again.*", parse_mode="Markdown")
 
 # ✅ Enable/Disable Bot Maintenance Mode
-async def maintenance_mode(update: Update, context: CallbackContext):
+async def maintenance_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global bot_maintenance
 
     if update.effective_user.id != ADMIN_ID:
@@ -826,7 +826,7 @@ async def maintenance_mode(update: Update, context: CallbackContext):
     bot_maintenance = False if command == "on" else True
     await update.message.reply_text(f"✅ *Bot maintenance mode {'Disabled' if command == 'on' else 'Enabled'}!*", parse_mode="Markdown")
             
-async def clear_attack(update: Update, context: CallbackContext):
+async def clear_attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global current_attack_user, current_attack_end_time, current_attack_process
 
     if update.effective_user.id != ADMIN_ID:
@@ -853,7 +853,7 @@ async def clear_attack(update: Update, context: CallbackContext):
 default_thread = "1000"
 
 # Command to set thread dynamically
-async def set_thread(update: Update, context: CallbackContext):
+async def set_thread(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 *You are not authorized to use this command.*", parse_mode="Markdown")
         return
@@ -871,7 +871,7 @@ async def set_thread(update: Update, context: CallbackContext):
         await update.message.reply_text("❌ *Usage: /setthread <thread_value>*", parse_mode="Markdown")
 
 # Command for /howtoattack
-async def howtoattack(update: Update, context: CallbackContext):
+async def howtoattack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📖 *Learn How to Attack:*\n"
         f"[Watch the Tutorial](https://youtu.be/gcc-iovADq4?si=teEuoQLRGNQK6MxZ)",
@@ -879,7 +879,7 @@ async def howtoattack(update: Update, context: CallbackContext):
     )
 
 # Command for /canary
-async def canary(update: Update, context: CallbackContext):
+async def canary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📱Android Canary📱", url="https://t.me/DAKUBHAIZ/143")],
         [InlineKeyboardButton("🍎iOS Canary🍎", url="https://apps.apple.com/in/app/surge-5/id1442620678")]
@@ -891,7 +891,7 @@ async def canary(update: Update, context: CallbackContext):
         parse_mode="Markdown"
     )
             
-async def price(update: Update, context: CallbackContext):
+async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     price_message = (
         "💰 *PRICE LIST:*\n\n"
         "⭐ 1 Day = ₹115\n"
@@ -904,18 +904,18 @@ async def price(update: Update, context: CallbackContext):
     await update.message.reply_text(price_message, parse_mode='Markdown',
     reply_markup=get_default_buttons())
 
-async def rule(update: Update, context: CallbackContext):
+async def rule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rule_message = "⚠️ *Rule: Ek Time Pe Ek Hi Attack Lagana*\n\n💫 The owner of this bot is ❄️DAKU BHAIZ❄️. Contact @DAKUxBHAIZ."
     await update.message.reply_text(rule_message, parse_mode='Markdown',
     reply_markup=get_default_buttons())
 
-async def owner(update: Update, context: CallbackContext):
+async def owner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"👤 *The owner of this bot is {ADMIN_USERNAME}.*\n"
         f"✉️ *Contact:* {ADMIN_CONTACT}\n\n", parse_mode='Markdown'
     )
 
-async def myinfo(update: Update, context: CallbackContext):
+async def myinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_data = collection.find_one({"user_id": user.id})
     now = datetime.now()
@@ -961,7 +961,7 @@ async def myinfo(update: Update, context: CallbackContext):
     await update.message.reply_text(info_message, parse_mode='Markdown',
     reply_markup=get_default_buttons())
 
-async def admincommand(update: Update, context: CallbackContext):
+async def admincommand(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await not_authorized_message(update)
         return
@@ -978,7 +978,7 @@ async def admincommand(update: Update, context: CallbackContext):
     )
     await update.message.reply_text(admin_message, parse_mode='Markdown')
     
-async def broadcast(update: Update, context: CallbackContext):
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 *You are not authorized to use this command.*", parse_mode="Markdown")
         return
@@ -1000,7 +1000,7 @@ async def broadcast(update: Update, context: CallbackContext):
 
     await update.message.reply_text(f"✅ *Broadcast sent to {success_count} users.*", parse_mode="Markdown")
     
-async def users(update: Update, context: CallbackContext):
+async def users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 *You are not authorized to use this command.*", parse_mode="Markdown")
         return
@@ -1018,7 +1018,7 @@ import time
 # Bot start hone ka time track karne ke liye
 start_time = time.time()
 
-async def uptime(update: Update, context: CallbackContext):
+async def uptime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_time = time.time()
     uptime_seconds = int(current_time - start_time)
 
@@ -1039,10 +1039,7 @@ async def start_background_tasks(app):
     asyncio.create_task(notify_unapproved_users(app.bot))  # Naya task unapproved users ke liye
 
 def main():
-    BOT_TOKEN = "your_bot_token_here"
-
-    updater = Updater(BOT_TOKEN)  # `use_context=True` remove kar diya
-    dp = updater.dispatcher
+    application = ApplicationBuilder().token(BOT_TOKEN).post_init(start_background_tasks).build()
 
     # Command handlers
     application.add_handler(CommandHandler("start", start))
@@ -1075,8 +1072,7 @@ def main():
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
     # Start the bot
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
