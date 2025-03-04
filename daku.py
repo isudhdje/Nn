@@ -1040,8 +1040,8 @@ async def start_background_tasks(app):
 
 def main():
     BOT_TOKEN = "your_bot_token_here"
-    
-    updater = Updater(BOT_TOKEN, use_context=True)
+
+    updater = Updater(BOT_TOKEN)  # `use_context=True` remove kar diya
     dp = updater.dispatcher
 
     # Command handlers
